@@ -6,7 +6,8 @@ let package = Package(
     platforms: [.iOS(.v17), .macOS(.v14)],
     products: [
         .library(name: "PaintCoachCore", targets: ["PaintCoachCore"]),
-        .library(name: "PaintCoachMetal", targets: ["PaintCoachMetal"])
+        .library(name: "PaintCoachMetal", targets: ["PaintCoachMetal"]),
+        .executable(name: "PaintCoachApp", targets: ["PaintCoachApp"])
     ],
     targets: [
         // Pure, platform-free. Must never import CoreGraphics/UIKit/Metal.
@@ -19,6 +20,13 @@ let package = Package(
             name: "PaintCoachMetal",
             dependencies: ["PaintCoachCore"],
             resources: [.process("Shaders")]
+        ),
+
+        // Minimal harness whose only job is to put the Metal backend on screen
+        // so the unverified parts of it can be seen to work or fail.
+        .executableTarget(
+            name: "PaintCoachApp",
+            dependencies: ["PaintCoachCore", "PaintCoachMetal"]
         )
     ]
 )

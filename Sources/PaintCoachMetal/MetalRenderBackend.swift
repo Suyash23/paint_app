@@ -36,11 +36,11 @@ public final class MetalRenderBackend: RenderBackend {
     /// Frame state, valid only between `beginFrame` and `endFrame`.
     private var frameCommandBuffer: MTLCommandBuffer?
     private var frameEncoder: MTLRenderCommandEncoder?
-    private var frameDrawable: CAMetalDrawable?
+    private var frameTarget: FrameTarget?
 
-    /// Supplies the drawable to present into. Injected so this type does not
-    /// depend on a specific view class.
-    public var drawableProvider: (() -> CAMetalDrawable?)?
+    /// Supplies the target to render into. Injected so this type depends on no
+    /// specific view class, and so frames can be rendered offscreen for testing.
+    public var frameTargetProvider: (() -> FrameTarget?)?
 
     /// Brush tip hardness, 0 soft ... 1 hard.
     public var hardness: Float = 0.85
@@ -240,11 +240,11 @@ public final class MetalRenderBackend: RenderBackend {
 
     public func beginFrame(size: CanvasSize) throws {
         guard frameEncoder == nil else { throw RenderError.frameAlreadyInProgress }
-        guard let drawable = drawableProvider?() else { throw RenderError.backendUnavailable }
+        guard let target = frameTargetProvider?() else { throw RenderError.backendUnavailable }
         guard let buffer = commandQueue.makeCommandBuffer() else { throw RenderError.backendUnavailable }
 
         let descriptor = MTLRenderPassDescriptor()
-        descriptor.colorAttachments[0].texture = drawable.texture
+        descriptor.colorAttachments[0].texture = target.texture
         descriptor.colorAttachments[0].loadAction = .clear
         descriptor.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 0)
         descriptor.colorAttachments[0].storeAction = .store
@@ -254,7 +254,7 @@ public final class MetalRenderBackend: RenderBackend {
         }
         frameCommandBuffer = buffer
         frameEncoder = encoder
-        frameDrawable = drawable
+        frameTarget = target
     }
 
     public func compositeColor(_ color: RGBA, opacity: Double) throws {
@@ -279,7 +279,7 @@ public final class MetalRenderBackend: RenderBackend {
 
     public func compositeLiveStroke(batch: StampBatch, opacity: Double) throws {
         guard let encoder = frameEncoder else { throw RenderError.noFrameInProgress }
-        guard let drawable = frameDrawable else { throw RenderError.noFrameInProgress }
+        guard let target = frameTarget else { throw RenderError.noFrameInProgress }
         guard !batch.stamps.isEmpty else { return }
 
         // Drawn straight onto the frame, never into the layer cache — this is
@@ -295,7 +295,7 @@ public final class MetalRenderBackend: RenderBackend {
         try encode(
             batch: faded,
             into: encoder,
-            canvasSize: CanvasSize(width: drawable.texture.width, height: drawable.texture.height)
+            canvasSize: CanvasSize(width: target.texture.width, height: target.texture.height)
         )
     }
 
@@ -304,13 +304,18 @@ public final class MetalRenderBackend: RenderBackend {
             throw RenderError.noFrameInProgress
         }
         encoder.endEncoding()
-        if let drawable = frameDrawable {
+        if let drawable = frameTarget?.presentable {
             buffer.present(drawable)
         }
         buffer.commit()
+        // Offscreen targets are read back immediately after this returns, so the
+        // GPU must have finished before the caller inspects the texture.
+        if frameTarget?.presentable == nil {
+            buffer.waitUntilCompleted()
+        }
         frameEncoder = nil
         frameCommandBuffer = nil
-        frameDrawable = nil
+        frameTarget = nil
     }
 
     // MARK: - Helpers
