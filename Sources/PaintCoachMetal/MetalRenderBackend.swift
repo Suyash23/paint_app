@@ -16,10 +16,11 @@ struct StampInstanceData {
 
 /// Metal implementation of `RenderBackend`.
 ///
-/// UNVERIFIED: written without a device to run it on. The scheduling logic that
-/// drives this is fully tested via `FrameCoordinator` against a mock, but the
-/// pipeline setup, blend state, and shader correctness here have not been
-/// executed. Expect to debug this against real hardware.
+/// Verified on device: 20/20 checks in `PaintCoachApp` pass, covering the
+/// clip-space transform, Y orientation, scissor origin, premultiplied blend
+/// state, and `StampInstanceData` layout matching the shader struct. Run
+/// `swift run PaintCoachApp` after changing anything here — those properties are
+/// invisible to the compiler and only pixel readback catches a regression.
 public final class MetalRenderBackend: RenderBackend {
 
     private let device: MTLDevice
