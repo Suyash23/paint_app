@@ -1,0 +1,9 @@
+.build/
+.swiftpm/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+.DS_Store
+
+# Large reference PDFs (62 MB) — kept local, not worth versioning
+*.pdf
