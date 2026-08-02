@@ -104,6 +104,7 @@ struct Harness {
             try runGeometryTests()
             try runLayerTests()
             try runCacheTests()
+            try runInputTests()
         } catch {
             print("\nFATAL: \(error)")
             print("The backend could not complete a frame.")
@@ -299,5 +300,71 @@ struct Harness {
         check(afterCancel.r > 200 && afterCancel.g > 200,
               "cancelled live stroke leaves no trace",
               detail: "got \(afterCancel) — live stroke may have leaked into the cache")
+    }
+
+    // MARK: - Input
+
+    /// Drives StrokeSession the way a touch handler would, through the real GPU
+    /// path, so the input layer is verified end to end rather than only against
+    /// synthetic unit tests.
+    static func runInputTests() throws {
+        print("\nInput pipeline")
+        let scene = try Scene(size: CanvasSize(width: 128, height: 128))
+        var session = StrokeSession()
+
+        let started = session.begin(
+            layer: scene.document.activeLayer,
+            brushID: "test", color: .black, size: 1, opacity: 1,
+            at: 1000, minimumDistance: 1
+        )
+        check(started, "session begins on a paintable layer")
+
+        // Simulate three frames of dragging, each with coalesced plus predicted
+        // samples, exactly as UIKit delivers them.
+        scene.coordinator.beginStroke(on: scene.activeLayerID)
+        for frame in 0..<3 {
+            let base = 20.0 + Double(frame) * 30
+            session.move(
+                coalesced: [
+                    StrokePoint(position: Point(base, 64), pressure: 0.6, timestamp: 1000 + Double(frame) * 0.016),
+                    StrokePoint(position: Point(base + 15, 64), pressure: 0.6, timestamp: 1000 + Double(frame) * 0.016 + 0.008)
+                ],
+                predicted: [
+                    StrokePoint(position: Point(base + 25, 64), pressure: 0.6, timestamp: 1000 + Double(frame) * 0.016 + 0.016)
+                ]
+            )
+            try scene.render(live: session.liveStroke)
+        }
+
+        let midDrag = scene.pixel(50, 64)
+        check(midDrag.r < 100, "in-progress stroke is visible while dragging", detail: "got \(midDrag)")
+
+        // Committing must keep the mark, now baked into the layer cache.
+        guard let result = session.end() else {
+            check(false, "session produced a committed stroke")
+            return
+        }
+        check(true, "session produced a committed stroke")
+
+        try scene.store.perform(result.command)
+        scene.coordinator.commitStroke(result.stroke)
+        try scene.render()
+
+        let committed = scene.pixel(50, 64)
+        check(committed.r < 100, "committed stroke survives in the cache", detail: "got \(committed)")
+
+        // Prediction must not have been persisted: the committed stroke should
+        // end near the last real sample, not the predicted tail.
+        let lastReal = result.stroke.points.map(\.position.x).max() ?? 0
+        check(lastReal <= 95.5,
+              "predicted samples were not committed",
+              detail: "stroke ends at x=\(Int(lastReal)), last real sample was 95")
+
+        // Undo must remove it from the rendered frame too.
+        try scene.store.undo()
+        scene.coordinator.applyRemoval(layerID: scene.activeLayerID, stroke: result.stroke)
+        try scene.render()
+        let undone = scene.pixel(50, 64)
+        check(undone.r > 200, "undo removes the stroke from the frame", detail: "got \(undone)")
     }
 }
