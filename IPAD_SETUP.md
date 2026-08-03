@@ -1,5 +1,39 @@
 # Running on an iPad
 
+## Open the app project, not the package
+
+```bash
+open App/PaintCoach.xcodeproj
+```
+
+Select your iPad and press ⌘R. Signing is already configured.
+
+**Do not open `Package.swift` or this folder directly in Xcode to run the app.**
+Opening the package gives you library schemes (`PaintCoachCore`,
+`PaintCoachMetal`, `PaintCoachUI`) which declare no platform of their own. Xcode
+then falls back to a bogus DriverKit target and you get a confusing cascade:
+
+```
+invalid version number in '-target air64-apple-driverkit19.0'
+Unable to resolve module dependency: 'Swift'
+Unable to resolve module dependency: 'Foundation'
+```
+
+Those module errors are downstream noise. The real fault is the DriverKit
+triple — DriverKit ships no Swift standard library, so every import fails after
+it. Nothing is wrong with the code; it is the wrong scheme for an app.
+
+The package is still the right thing to open for working on Core:
+
+```bash
+swift test                # 200 unit tests
+swift run PaintCoachApp   # 26 on-device pixel checks
+```
+
+The rest of this document explains how the project was assembled, and what to
+look for once it runs.
+
+
 The package builds for iOS but SwiftPM cannot produce an app bundle, so you need
 a thin Xcode app target that depends on it. This takes about two minutes.
 
