@@ -17,6 +17,9 @@ public struct Layer: Identifiable, Hashable, Codable, Sendable {
     public var opacity: Double
     /// Only meaningful for `.backgroundColor` layers.
     public var backgroundColor: RGBA
+    /// When true this layer is masked by the opaque area of the layer below it
+    /// (Procreate's "Clipping Mask"). Only meaningful for `.paint` layers.
+    public var isClippingMask: Bool
     public var strokes: [Stroke]
 
     public init(
@@ -27,6 +30,7 @@ public struct Layer: Identifiable, Hashable, Codable, Sendable {
         isLocked: Bool = false,
         opacity: Double = 1,
         backgroundColor: RGBA = .white,
+        isClippingMask: Bool = false,
         strokes: [Stroke] = []
     ) {
         self.id = id
@@ -36,6 +40,7 @@ public struct Layer: Identifiable, Hashable, Codable, Sendable {
         self.isLocked = isLocked
         self.opacity = opacity
         self.backgroundColor = backgroundColor
+        self.isClippingMask = isClippingMask
         self.strokes = strokes
     }
 

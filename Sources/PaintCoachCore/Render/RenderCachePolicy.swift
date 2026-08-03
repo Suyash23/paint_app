@@ -198,8 +198,10 @@ public struct RenderCachePolicy {
             // Opacity is applied at composite time, so the cache stays valid.
             _ = layerID
 
-        case .moveLayer, .setLayerVisibility, .setLayerLocked, .renameLayer, .setActiveLayer:
-            // None of these change a layer's own pixels.
+        case .moveLayer, .setLayerVisibility, .setLayerLocked, .renameLayer, .setActiveLayer,
+             .setLayerClippingMask:
+            // None of these change a layer's own pixels. Clipping is resolved at
+            // composite time against the layer below, so the cache stays valid.
             break
         }
     }

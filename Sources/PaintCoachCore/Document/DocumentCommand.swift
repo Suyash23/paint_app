@@ -14,6 +14,8 @@ public enum DocumentCommand: Equatable, Sendable {
     case setLayerLocked(layerID: UUID, isLocked: Bool)
     case setLayerOpacity(layerID: UUID, opacity: Double)
     case renameLayer(layerID: UUID, name: String)
+    /// Toggles Procreate's "Clipping Mask" on a paint layer.
+    case setLayerClippingMask(layerID: UUID, isClippingMask: Bool)
     case setActiveLayer(layerID: UUID)
     /// 3-finger scrub: remove every stroke on a layer.
     case clearLayer(layerID: UUID)
@@ -72,6 +74,16 @@ public enum DocumentCommand: Equatable, Sendable {
             let previous = document.layers[i].name
             document.layers[i].name = name
             return .renameLayer(layerID: layerID, name: previous)
+
+        case let .setLayerClippingMask(layerID, isClippingMask):
+            let i = try document.requireIndex(of: layerID)
+            // The Background Color layer has nothing beneath it to clip to.
+            guard document.layers[i].kind == .paint else {
+                throw DocumentError.layerNotClippable(layerID)
+            }
+            let previous = document.layers[i].isClippingMask
+            document.layers[i].isClippingMask = isClippingMask
+            return .setLayerClippingMask(layerID: layerID, isClippingMask: previous)
 
         case let .setActiveLayer(layerID):
             let previous = document.activeLayerID

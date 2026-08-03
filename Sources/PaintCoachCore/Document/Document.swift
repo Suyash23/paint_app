@@ -8,6 +8,8 @@ public enum DocumentError: Error, Equatable, Sendable {
     /// The Background Color layer is pinned at the bottom and cannot be moved or deleted.
     case backgroundLayerImmovable
     case lastPaintLayer
+    /// Only paint layers can be turned into clipping masks.
+    case layerNotClippable(UUID)
 }
 
 /// The whole drawing, as pure data. `layers[0]` is the bottom-most layer.
@@ -59,6 +61,20 @@ public struct Document: Equatable, Codable, Sendable {
 
     /// Index of the top-most layer, used as the default insertion point for `+`.
     public var topIndex: Int { layers.count }
+
+    /// The layer a clipping-mask layer is clipped against: the nearest layer
+    /// below it that is not itself a clipping mask.
+    ///
+    /// Consecutive clipping-mask layers all clip to the same base, which is how
+    /// Procreate stacks several masks over one shape. Returns `nil` when the
+    /// layer is not a clipping mask, or when no valid base exists below it.
+    public func clippingBase(for id: UUID) -> Layer? {
+        guard let i = index(of: id), layers[i].isClippingMask else { return nil }
+        for candidate in layers[..<i].reversed() where !candidate.isClippingMask {
+            return candidate
+        }
+        return nil
+    }
 
     // MARK: - Mutation (internal; all public change goes through DocumentCommand)
 
