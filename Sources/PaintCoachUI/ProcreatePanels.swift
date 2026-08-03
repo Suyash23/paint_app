@@ -123,8 +123,16 @@ struct PCBrushSwatch: View {
 // MARK: - Layers (IMG_0005)
 
 /// Layer stack with thumbnail, blend-mode letter, and visibility checkbox.
+///
+/// UNVERIFIED: never run on a device.
 struct PCLayersPanel: View {
     @ObservedObject var model: CanvasModel
+
+    /// Which row is showing its rename field.
+    @State private var renamingLayerID: UUID?
+    @State private var draftName: String = ""
+    /// Which row has its options expanded (tap the "N" badge).
+    @State private var expandedLayerID: UUID?
 
     var body: some View {
         PCPanelCard {
@@ -152,46 +160,71 @@ struct PCLayersPanel: View {
         let isActive = layer.id == model.activeLayerID
         let isBackground = layer.kind == .backgroundColor
 
-        return HStack(spacing: 0) {
-            // Thumbnail: white for the background layer, dark for paint layers.
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(isBackground ? Color.white : Color(white: 0.22))
-                .frame(width: 60, height: 44)
-
-            Text(layer.name)
-                .font(.system(size: 14))
-                .foregroundStyle(.white)
-                .padding(.leading, 12)
-
-            Spacer(minLength: 8)
-
-            if !isBackground {
-                Text("N")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(isActive ? .white : PC.icon)
-                    .padding(.trailing, 10)
-            }
-
-            Button {
-                model.toggleVisibility(layerID: layer.id)
-            } label: {
-                RoundedRectangle(cornerRadius: 3, style: .continuous)
-                    .fill(layer.isVisible ? Color.white : Color.clear)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 3, style: .continuous)
-                            .stroke(Color.white.opacity(0.55), lineWidth: 1.2)
-                    )
-                    .overlay {
-                        if layer.isVisible {
-                            Image(systemName: "checkmark")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundStyle(isActive ? PC.accent : Color.black)
+        return VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                // Thumbnail: white for the background layer, dark for paint layers.
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(isBackground ? Color.white : Color(white: 0.22))
+                    .frame(width: 60, height: 44)
+                    .overlay(alignment: .bottomLeading) {
+                        // Clipping masks are marked, as the reference does.
+                        if layer.isClippingMask {
+                            Image(systemName: "arrow.turn.left.up")
+                                .font(.system(size: 8, weight: .bold))
+                                .foregroundStyle(.white.opacity(0.8))
+                                .padding(3)
                         }
                     }
-                    .frame(width: 17, height: 17)
+
+                nameField(layer, isBackground: isBackground)
+
+                Spacer(minLength: 8)
+
+                if layer.isLocked {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 10))
+                        .foregroundStyle(isActive ? .white : PC.icon)
+                        .padding(.trailing, 6)
+                }
+
+                if !isBackground {
+                    // Tapping the blend badge opens this row's options.
+                    Button {
+                        expandedLayerID = expandedLayerID == layer.id ? nil : layer.id
+                    } label: {
+                        Text("N")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(isActive ? .white : PC.icon)
+                            .padding(.trailing, 10)
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                Button {
+                    model.toggleVisibility(layerID: layer.id)
+                } label: {
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                        .fill(layer.isVisible ? Color.white : Color.clear)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                                .stroke(Color.white.opacity(0.55), lineWidth: 1.2)
+                        )
+                        .overlay {
+                            if layer.isVisible {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundStyle(isActive ? PC.accent : Color.black)
+                            }
+                        }
+                        .frame(width: 17, height: 17)
+                }
+                .buttonStyle(.plain)
+                .padding(.trailing, 12)
             }
-            .buttonStyle(.plain)
-            .padding(.trailing, 12)
+
+            if expandedLayerID == layer.id, !isBackground {
+                options(layer)
+            }
         }
         .padding(4)
         .background(
@@ -204,6 +237,112 @@ struct PCLayersPanel: View {
             // selectable — mirrors the Core rule rather than duplicating it.
             if layer.kind == .paint { model.select(layerID: layer.id) }
         }
+    }
+
+    /// The layer name, swapping to a text field while being renamed.
+    @ViewBuilder
+    private func nameField(_ layer: Layer, isBackground: Bool) -> some View {
+        if renamingLayerID == layer.id {
+            TextField("Name", text: $draftName)
+                .textFieldStyle(.plain)
+                .font(.system(size: 14))
+                .foregroundStyle(.white)
+                .padding(.leading, 12)
+                .onSubmit {
+                    model.rename(layerID: layer.id, to: draftName)
+                    renamingLayerID = nil
+                }
+        } else {
+            Text(layer.name)
+                .font(.system(size: 14))
+                .foregroundStyle(.white)
+                .padding(.leading, 12)
+                .contentShape(Rectangle())
+                .onTapGesture(count: 2) {
+                    // The Background Color layer's name is fixed.
+                    guard !isBackground else { return }
+                    draftName = layer.name
+                    renamingLayerID = layer.id
+                }
+        }
+    }
+
+    /// Per-layer options: opacity, clipping mask, and the destructive actions
+    /// that are also reachable by swiping.
+    private func options(_ layer: Layer) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Text("Opacity")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.white.opacity(0.75))
+                Slider(
+                    value: Binding(
+                        get: { layer.opacity },
+                        set: { model.setOpacity(layerID: layer.id, opacity: $0) }
+                    ),
+                    in: 0...1
+                )
+                Text("\(Int(layer.opacity * 100))%")
+                    .font(.system(size: 11).monospacedDigit())
+                    .foregroundStyle(.white.opacity(0.75))
+                    .frame(width: 34, alignment: .trailing)
+            }
+
+            HStack(spacing: 10) {
+                optionButton(
+                    layer.isClippingMask ? "Unclip" : "Clipping Mask",
+                    systemImage: "arrow.turn.left.up"
+                ) {
+                    model.toggleClippingMask(layerID: layer.id)
+                }
+
+                optionButton(
+                    layer.isLocked ? "Unlock" : "Lock",
+                    systemImage: layer.isLocked ? "lock.open" : "lock"
+                ) {
+                    model.toggleLocked(layerID: layer.id)
+                }
+
+                optionButton("Duplicate", systemImage: "plus.square.on.square") {
+                    model.duplicate(layerID: layer.id)
+                }
+
+                // Hidden rather than disabled when deletion is barred, since the
+                // Core rule (keep one paint layer) is not something to explain here.
+                if model.canDelete(layerID: layer.id) {
+                    optionButton("Delete", systemImage: "trash") {
+                        if expandedLayerID == layer.id { expandedLayerID = nil }
+                        model.deleteLayer(layerID: layer.id)
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.top, 8)
+        .padding(.bottom, 2)
+    }
+
+    private func optionButton(
+        _ title: String,
+        systemImage: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            VStack(spacing: 3) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 12))
+                Text(title)
+                    .font(.system(size: 9))
+            }
+            .foregroundStyle(.white.opacity(0.85))
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 5)
+            .background(
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(Color.white.opacity(0.12))
+            )
+        }
+        .buttonStyle(.plain)
     }
 }
 

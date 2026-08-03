@@ -115,6 +115,64 @@ public final class CanvasModel: ObservableObject {
         guard let id = activeLayerID else { return }
         canvas?.perform(.clearLayer(layerID: id))
     }
+
+    // MARK: - Layer options
+
+    /// Whether a layer may be deleted. The Background Color layer is pinned and
+    /// the document must keep at least one paint layer.
+    public func canDelete(layerID: UUID) -> Bool {
+        guard let layer = canvas?.document.layer(id: layerID), layer.kind == .paint else {
+            return false
+        }
+        return layers.filter { $0.kind == .paint }.count > 1
+    }
+
+    public func rename(layerID: UUID, to name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        // An empty name would render as a blank row, so keep the old one.
+        guard !trimmed.isEmpty else { return }
+        canvas?.perform(.renameLayer(layerID: layerID, name: trimmed))
+    }
+
+    public func toggleLocked(layerID: UUID) {
+        guard let layer = canvas?.document.layer(id: layerID) else { return }
+        canvas?.perform(.setLayerLocked(layerID: layerID, isLocked: !layer.isLocked))
+    }
+
+    public func setOpacity(layerID: UUID, opacity: Double) {
+        canvas?.perform(.setLayerOpacity(layerID: layerID, opacity: opacity))
+    }
+
+    public func toggleClippingMask(layerID: UUID) {
+        guard let layer = canvas?.document.layer(id: layerID) else { return }
+        canvas?.perform(
+            .setLayerClippingMask(layerID: layerID, isClippingMask: !layer.isClippingMask)
+        )
+    }
+
+    /// Inserts a copy directly above the source layer and selects it, which is
+    /// what Procreate does after Duplicate.
+    public func duplicate(layerID: UUID) {
+        guard let canvas, let source = canvas.document.layer(id: layerID),
+              let index = canvas.document.index(of: layerID) else { return }
+
+        let copy = source.duplicated()
+        canvas.perform(.addLayer(layer: copy, index: index + 1))
+        canvas.perform(.setActiveLayer(layerID: copy.id))
+    }
+
+    /// Moves a layer to a new slot in the stack, expressed in the panel's
+    /// top-first ordering.
+    public func moveLayer(from source: Int, to destination: Int) {
+        guard let canvas else { return }
+        let count = canvas.document.layers.count
+        // The panel lists top-first; the document stores bottom-first.
+        let fromIndex = count - 1 - source
+        let toIndex = count - 1 - destination
+        guard fromIndex != toIndex, canvas.document.layers.indices.contains(fromIndex) else { return }
+        let layerID = canvas.document.layers[fromIndex].id
+        canvas.perform(.moveLayer(layerID: layerID, to: toIndex))
+    }
 }
 
 /// Procreate-style painting UI, laid out to match the reference screenshots.
