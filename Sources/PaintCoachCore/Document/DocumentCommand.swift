@@ -7,6 +7,9 @@ import Foundation
 public enum DocumentCommand: Equatable, Sendable {
     case addStroke(layerID: UUID, stroke: Stroke)
     case removeStroke(layerID: UUID, strokeID: UUID)
+    /// ColorDrop / bucket fill.
+    case addFill(layerID: UUID, fill: Fill)
+    case removeFill(layerID: UUID, fillID: UUID)
     case addLayer(layer: Layer, index: Int)
     case deleteLayer(layerID: UUID)
     case moveLayer(layerID: UUID, to: Int)
@@ -17,10 +20,12 @@ public enum DocumentCommand: Equatable, Sendable {
     /// Toggles Procreate's "Clipping Mask" on a paint layer.
     case setLayerClippingMask(layerID: UUID, isClippingMask: Bool)
     case setActiveLayer(layerID: UUID)
-    /// 3-finger scrub: remove every stroke on a layer.
+    /// 3-finger scrub: remove everything painted on a layer.
     case clearLayer(layerID: UUID)
     /// Inverse of `clearLayer` — re-appends a previously removed run of strokes.
     case restoreStrokes(layerID: UUID, strokes: [Stroke])
+    /// Inverse of `clearLayer` for layers that also contain fills.
+    case restoreElements(layerID: UUID, elements: [LayerElement])
 
     /// Applies the command and returns the command that undoes it.
     @discardableResult
@@ -28,16 +33,31 @@ public enum DocumentCommand: Equatable, Sendable {
         switch self {
         case let .addStroke(layerID, stroke):
             let i = try document.requirePaintableIndex(of: layerID)
-            document.layers[i].strokes.append(stroke)
+            document.layers[i].elements.append(.stroke(stroke))
             return .removeStroke(layerID: layerID, strokeID: stroke.id)
 
         case let .removeStroke(layerID, strokeID):
             let i = try document.requireIndex(of: layerID)
-            guard let s = document.layers[i].strokes.firstIndex(where: { $0.id == strokeID }) else {
+            guard let s = document.layers[i].elements.firstIndex(where: { $0.id == strokeID }),
+                  case let .stroke(removed) = document.layers[i].elements[s] else {
                 throw DocumentError.strokeNotFound(strokeID)
             }
-            let removed = document.layers[i].strokes.remove(at: s)
+            document.layers[i].elements.remove(at: s)
             return .addStroke(layerID: layerID, stroke: removed)
+
+        case let .addFill(layerID, fill):
+            let i = try document.requirePaintableIndex(of: layerID)
+            document.layers[i].elements.append(.fill(fill))
+            return .removeFill(layerID: layerID, fillID: fill.id)
+
+        case let .removeFill(layerID, fillID):
+            let i = try document.requireIndex(of: layerID)
+            guard let f = document.layers[i].elements.firstIndex(where: { $0.id == fillID }),
+                  case let .fill(removed) = document.layers[i].elements[f] else {
+                throw DocumentError.fillNotFound(fillID)
+            }
+            document.layers[i].elements.remove(at: f)
+            return .addFill(layerID: layerID, fill: removed)
 
         case let .addLayer(layer, index):
             try document.insertLayer(layer, at: index)
@@ -92,13 +112,18 @@ public enum DocumentCommand: Equatable, Sendable {
 
         case let .clearLayer(layerID):
             let i = try document.requirePaintableIndex(of: layerID)
-            let removed = document.layers[i].strokes
-            document.layers[i].strokes = []
-            return .restoreStrokes(layerID: layerID, strokes: removed)
+            let removed = document.layers[i].elements
+            document.layers[i].elements = []
+            return .restoreElements(layerID: layerID, elements: removed)
 
         case let .restoreStrokes(layerID, strokes):
             let i = try document.requirePaintableIndex(of: layerID)
-            document.layers[i].strokes.append(contentsOf: strokes)
+            document.layers[i].elements.append(contentsOf: strokes.map(LayerElement.stroke))
+            return .clearLayer(layerID: layerID)
+
+        case let .restoreElements(layerID, elements):
+            let i = try document.requirePaintableIndex(of: layerID)
+            document.layers[i].elements.append(contentsOf: elements)
             return .clearLayer(layerID: layerID)
         }
     }

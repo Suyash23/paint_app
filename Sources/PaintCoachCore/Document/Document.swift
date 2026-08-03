@@ -3,6 +3,7 @@ import Foundation
 public enum DocumentError: Error, Equatable, Sendable {
     case layerNotFound(UUID)
     case strokeNotFound(UUID)
+    case fillNotFound(UUID)
     case layerNotPaintable(UUID)
     case indexOutOfRange(Int)
     /// The Background Color layer is pinned at the bottom and cannot be moved or deleted.

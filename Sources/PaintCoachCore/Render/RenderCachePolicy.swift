@@ -185,7 +185,13 @@ public struct RenderCachePolicy {
                 invalidate(layerID: layerID)
             }
 
-        case let .clearLayer(layerID), let .restoreStrokes(layerID, _):
+        case let .clearLayer(layerID), let .restoreStrokes(layerID, _),
+             let .restoreElements(layerID, _):
+            invalidate(layerID: layerID)
+
+        case let .addFill(layerID, _), let .removeFill(layerID, _):
+            // A flood fill's extent is not known until it is rasterized, so the
+            // whole layer is conservatively redrawn.
             invalidate(layerID: layerID)
 
         case let .addLayer(layer, _):
