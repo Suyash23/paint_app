@@ -10,6 +10,9 @@ public enum DocumentCommand: Equatable, Sendable {
     /// ColorDrop / bucket fill.
     case addFill(layerID: UUID, fill: Fill)
     case removeFill(layerID: UUID, fillID: UUID)
+    /// Replaces the whole selection. Inverse is the previous selection, so this
+    /// covers add / subtract / intersect / invert / feather / clear uniformly.
+    case setSelection(Selection)
     case addLayer(layer: Layer, index: Int)
     case deleteLayer(layerID: UUID)
     case moveLayer(layerID: UUID, to: Int)
@@ -109,6 +112,11 @@ public enum DocumentCommand: Equatable, Sendable {
             let previous = document.activeLayerID
             try document.setActiveLayer(id: layerID)
             return .setActiveLayer(layerID: previous)
+
+        case let .setSelection(selection):
+            let previous = document.selection
+            document.selection = selection
+            return .setSelection(previous)
 
         case let .clearLayer(layerID):
             let i = try document.requirePaintableIndex(of: layerID)

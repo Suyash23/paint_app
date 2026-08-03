@@ -205,9 +205,9 @@ public struct RenderCachePolicy {
             _ = layerID
 
         case .moveLayer, .setLayerVisibility, .setLayerLocked, .renameLayer, .setActiveLayer,
-             .setLayerClippingMask:
-            // None of these change a layer's own pixels. Clipping is resolved at
-            // composite time against the layer below, so the cache stays valid.
+             .setLayerClippingMask, .setSelection:
+            // None of these change a layer's own pixels. Clipping and selection
+            // masking are resolved at composite time, so the caches stay valid.
             break
         }
     }

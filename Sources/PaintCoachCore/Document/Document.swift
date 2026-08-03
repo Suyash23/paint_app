@@ -18,6 +18,8 @@ public struct Document: Equatable, Codable, Sendable {
     public var canvasSize: CanvasSize
     public internal(set) var layers: [Layer]
     public internal(set) var activeLayerID: UUID
+    /// The active selection. Document-level, so it persists across layer changes.
+    public internal(set) var selection: Selection
 
     /// Creates a document with a pinned Background Color layer plus one empty paint layer.
     public init(canvasSize: CanvasSize = .screenSize, backgroundColor: RGBA = .white) {
@@ -30,6 +32,22 @@ public struct Document: Equatable, Codable, Sendable {
         self.canvasSize = canvasSize
         self.layers = [background, first]
         self.activeLayerID = first.id
+        self.selection = .none
+    }
+
+    // MARK: - Codable
+
+    private enum CodingKeys: String, CodingKey {
+        case canvasSize, layers, activeLayerID, selection
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        canvasSize = try c.decode(CanvasSize.self, forKey: .canvasSize)
+        layers = try c.decode([Layer].self, forKey: .layers)
+        activeLayerID = try c.decode(UUID.self, forKey: .activeLayerID)
+        // Absent in documents saved before selections existed.
+        selection = try c.decodeIfPresent(Selection.self, forKey: .selection) ?? .none
     }
 
     // MARK: - Lookup
