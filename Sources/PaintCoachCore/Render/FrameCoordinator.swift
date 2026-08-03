@@ -91,6 +91,15 @@ public final class FrameCoordinator {
         policy.invalidateAll()
     }
 
+    /// Forces a full repaint of one layer.
+    ///
+    /// Needed after undo/redo: the inverse command's painted region cannot be
+    /// recovered once the stroke has left the document, so the whole layer is
+    /// repainted rather than risk leaving a stale mark behind.
+    public func invalidate(layerID: UUID) {
+        policy.invalidate(layerID: layerID)
+    }
+
     // MARK: - Frame rendering
 
     /// Renders one frame of `document`, with `liveStroke` drawn above its layer.

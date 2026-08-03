@@ -359,6 +359,33 @@ final class FrameCoordinatorTests: XCTestCase {
         XCTAssertTrue(backend.calls.isEmpty)
     }
 
+    func testInvalidatingOneLayerForcesOnlyItToRedraw() throws {
+        var document = smallDocument()
+        let lower = document.activeLayerID
+        let upper = Layer(name: "Upper")
+        try DocumentCommand.addLayer(layer: upper, index: document.topIndex).apply(to: &document)
+
+        for id in [lower, upper.id] {
+            try DocumentCommand.addStroke(layerID: id, stroke: stroke()).apply(to: &document)
+            coordinator.apply(.addStroke(layerID: id, stroke: stroke()))
+        }
+        try coordinator.render(document: document)
+
+        // Undo repaints one layer; the other must keep its cache.
+        coordinator.invalidate(layerID: upper.id)
+        backend.reset()
+        try coordinator.render(document: document)
+
+        XCTAssertTrue(
+            backend.calls.contains(.clearCache(layerID: upper.id, region: nil)),
+            "invalidated layer must be fully repainted"
+        )
+        XCTAssertTrue(
+            backend.drawScissors(layerID: lower).isEmpty,
+            "untouched layer must not be redrawn"
+        )
+    }
+
     func testReleaseAllCachesForcesReallocationOnNextFrame() throws {
         let document = smallDocument()
         try coordinator.render(document: document)

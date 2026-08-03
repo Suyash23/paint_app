@@ -67,8 +67,11 @@ compilation alone:
 
 ## Not yet verified
 
-- **iPad app layer** — not written. `MTKView` host, `UITouch` coalesced and
-  predicted touches, `force`/`altitudeAngle`/`azimuthAngle` capture.
+- **UIKit layer — `PaintCoachUI`.** Written but never run. Builds for iOS
+  (`xcodebuild -scheme PaintCoachUI -destination 'generic/platform=iOS'`), which
+  proves only that it compiles. `MetalCanvasView`'s touch handling, the
+  view-to-canvas coordinate transform, Pencil force/tilt capture, and the
+  `MTKView` draw loop are all unexercised. See `IPAD_SETUP.md`.
 - **Performance under load** — Option A's cache has never been measured against
   a heavy document. The mock proves zero draw calls while dragging; real frame
   time on device is unmeasured.
