@@ -66,7 +66,7 @@ rest. Groups B/C/D are app-layer and carry device risk.
 These block UI work and are pure logic, so they are unit-testable without a
 device. Do these first.
 
-### 1. No selection / mask model anywhere in `PaintCoachCore` — `[P6]`
+### 1. Selection / mask model — **DONE AND TESTED** (was: missing) — `[P6]`
 - **Where:** `Sources/PaintCoachCore/Document/DocumentCommand.swift`
 - **Missing:** no selection command case, no stored selection state, no mask buffer.
 - **Reference:** PDF Part 3 Ch.4 — selections must actually mask paint, work
@@ -83,19 +83,19 @@ device. Do these first.
 - **Verified:** `ClippingMaskTests.swift` — 13 tests passing; full suite 213/213.
 - **Remaining work is UI/render only** — see `FEATURE_ROADMAP.md` F6.
 
-### 3. No fill / ColorDrop command — `[P5]`
+### 3. Fill / ColorDrop command — **DONE AND TESTED** (was: missing) — `[P5]`
 - **Where:** `Sources/PaintCoachCore/Document/DocumentCommand.swift`
 - **Missing:** no bucket-fill case.
 - **Reference:** PDF Part 3 leans on ColorDrop repeatedly for filling shapes and
   building clipping masks.
 
-### 4. No QuickShape in the stroke pipeline — `[P4]`
+### 4. QuickShape recognition — **DONE AND TESTED** (was: missing; not yet wired to the stroke pipeline) — `[P4]`
 - **Where:** `Sources/PaintCoachCore/Input/StrokeBuilder.swift`,
   `Sources/PaintCoachCore/Brush/StrokePath.swift`
 - **Missing:** no shape detection, no snapping. Needs pause-detection mid-stroke
   plus geometry fitting (line / circle / rect).
 
-### 5. No transform / bounding-box math — `[P7]`
+### 5. Transform / bounding-box math — **DONE AND TESTED** (was: missing; UI not yet built) — `[P7]`
 - **Where:** `Sources/PaintCoachCore/` (no transform type exists)
 - **Missing:** Freeform / Uniform / Distort / Warp modes, snapping guides,
   rotation node.
@@ -135,7 +135,7 @@ device. Do these first.
 
 # Group C — Inert UI (Core is often already ready)
 
-### 9. Layer Options mostly unwired — Core already supports them — `[P8]`
+### 9. Layer Options — **PARTLY DONE, UNVERIFIED** (rename / lock / opacity / clip / duplicate / delete wired; merge, grouping, drag-reorder still missing) — `[P8]`
 ![Layers panel](Screenshots/ui_gaps/10_layers-panel_N-badge.png)
 - **Where:** `PCLayersPanel` in `ProcreatePanels.swift:155-207`
 - **Already in Core:** `DocumentCommand` has `renameLayer`, `setLayerOpacity`,
