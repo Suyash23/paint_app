@@ -7,6 +7,7 @@ let package = Package(
     products: [
         .library(name: "PaintCoachCore", targets: ["PaintCoachCore"]),
         .library(name: "PaintCoachMetal", targets: ["PaintCoachMetal"]),
+        .library(name: "PaintCoachUI", targets: ["PaintCoachUI"]),
         .executable(name: "PaintCoachApp", targets: ["PaintCoachApp"])
     ],
     targets: [
@@ -14,16 +15,23 @@ let package = Package(
         .target(name: "PaintCoachCore"),
         .testTarget(name: "PaintCoachCoreTests", dependencies: ["PaintCoachCore"]),
 
-        // Metal backend. Kept a separate target so Core stays pure and the
-        // device-risk boundary is visible in the package structure.
+        // Metal backend. Separate target so Core stays pure and the device-risk
+        // boundary is visible in the package structure.
         .target(
             name: "PaintCoachMetal",
             dependencies: ["PaintCoachCore"],
             resources: [.process("Shaders")]
         ),
 
-        // Minimal harness whose only job is to put the Metal backend on screen
-        // so the unverified parts of it can be seen to work or fail.
+        // UIKit/SwiftUI layer. iOS-only in practice; guarded with canImport so
+        // the package still builds on macOS for the verification harness.
+        .target(
+            name: "PaintCoachUI",
+            dependencies: ["PaintCoachCore", "PaintCoachMetal"]
+        ),
+
+        // Offscreen verification harness. Renders known documents through the
+        // real Metal backend and asserts on pixels read back.
         .executableTarget(
             name: "PaintCoachApp",
             dependencies: ["PaintCoachCore", "PaintCoachMetal"]
