@@ -90,6 +90,26 @@ public struct Layer: Identifiable, Hashable, Codable, Sendable {
     }
 
     public var isEmpty: Bool { elements.isEmpty }
+
+    // MARK: - Duplication
+
+    /// An independent copy of this layer, with fresh identity throughout.
+    ///
+    /// The layer and every element get new ids, so the copy can coexist with the
+    /// original in one document without id collisions breaking lookups or undo.
+    public func duplicated(named newName: String? = nil) -> Layer {
+        Layer(
+            id: UUID(),
+            name: newName ?? name,
+            kind: kind,
+            isVisible: isVisible,
+            isLocked: isLocked,
+            opacity: opacity,
+            backgroundColor: backgroundColor,
+            isClippingMask: isClippingMask,
+            elements: elements.map { $0.duplicated() }
+        )
+    }
 }
 
 /// One painted item on a layer. Stored as intent, never as pixels, so undo stays
@@ -102,6 +122,25 @@ public enum LayerElement: Identifiable, Hashable, Codable, Sendable {
         switch self {
         case let .stroke(s): return s.id
         case let .fill(f): return f.id
+        }
+    }
+
+    /// A copy carrying a new id, so duplicated layers stay independent.
+    ///
+    /// Rebuilt through the initialisers because `id` is `let` on both payloads —
+    /// identity is deliberately immutable once created.
+    public func duplicated() -> LayerElement {
+        switch self {
+        case let .stroke(s):
+            return .stroke(Stroke(
+                brushID: s.brushID,
+                color: s.color,
+                size: s.size,
+                opacity: s.opacity,
+                points: s.points
+            ))
+        case let .fill(f):
+            return .fill(Fill(color: f.color, origin: f.origin, threshold: f.threshold))
         }
     }
 }
