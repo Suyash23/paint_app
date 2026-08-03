@@ -41,9 +41,14 @@ public struct CanvasRepresentable: UIViewRepresentable {
 public final class CanvasModel: ObservableObject {
 
     @Published public var brushID: String = Brush.studioPen.id
-    @Published public var color: RGBA = .black
+    @Published public var color: RGBA = RGBA(r: 1.0, g: 0.58, b: 0.0)
     @Published public var brushSize: Double = 0.35
     @Published public var brushOpacity: Double = 1.0
+
+    /// Which tool the right side of the top bar has active.
+    @Published public var tool: PCTool = .brush
+    /// Which brush set the library's left column has selected.
+    @Published public var selectedSet: String = "Pencils"
 
     /// Mirrors the document so the layer list and undo buttons stay in step.
     @Published public private(set) var layers: [Layer] = []
@@ -54,11 +59,21 @@ public final class CanvasModel: ObservableObject {
     public let initialDocument: Document
     private weak var canvas: MetalCanvasView?
 
+    /// Brushes available to the library, keyed the same way the canvas keys them.
+    public let brushes: [Brush]
+
     public init(document: Document = Document()) {
         self.initialDocument = document
         self.layers = document.layers
         self.activeLayerID = document.activeLayerID
+        self.brushes = MetalCanvasView.defaultBrushes
+            .values
+            .sorted { $0.name < $1.name }
     }
+
+    /// The right-hand column of the library. Every shipped brush is listed, since
+    /// the stock Procreate set names are cosmetic until real sets exist.
+    public var brushesInSelectedSet: [Brush] { brushes }
 
     func attach(_ canvas: MetalCanvasView) {
         self.canvas = canvas
@@ -102,185 +117,239 @@ public final class CanvasModel: ObservableObject {
     }
 }
 
-/// Minimal painting UI: canvas plus brush, colour, and layer controls.
+/// Procreate-style painting UI, laid out to match the reference screenshots.
 ///
 /// UNVERIFIED: never run on a device.
 public struct PaintView: View {
     @StateObject private var model: CanvasModel
-    @State private var showLayers = false
+    @State private var panel: PCPanel = .none
+    @State private var selectionMode = 0
+    @State private var transformMode = 2
 
     public init(document: Document = Document()) {
         _model = StateObject(wrappedValue: CanvasModel(document: document))
     }
 
-    private static let palette: [(String, RGBA)] = [
-        ("Black", .black),
-        ("White", .white),
-        ("Red", RGBA(r: 0.85, g: 0.15, b: 0.15)),
-        ("Blue", RGBA(r: 0.15, g: 0.35, b: 0.85)),
-        ("Green", RGBA(r: 0.15, g: 0.6, b: 0.3))
-    ]
-
     public var body: some View {
-        ZStack(alignment: .top) {
-            Color(white: 0.12).ignoresSafeArea()
-            // Constrain the view to the canvas aspect ratio. The compositing
-            // shader draws a fullscreen quad, so the drawable must match the
-            // canvas aspect or the image stretches — and touch mapping would
-            // then disagree with what is drawn.
-            CanvasRepresentable(model: model)
-                .aspectRatio(
-                    CGFloat(model.initialDocument.canvasSize.width)
-                        / CGFloat(model.initialDocument.canvasSize.height),
-                    contentMode: .fit
-                )
-                .padding(.horizontal, 8)
-            
+        ZStack(alignment: .topLeading) {
+            PCGridBackdrop()
+
+            canvasLayer
+
             VStack(spacing: 0) {
                 topBar
-                Spacer()
+                Spacer(minLength: 0)
             }
-            
-            VStack {
-                Spacer()
-                HStack {
-                    leftSidebar
-                    Spacer()
-                }
-                Spacer()
-            }
+            .ignoresSafeArea(edges: .bottom)
+
+            sidebar
+
+            panelLayer
+
+            bottomBarLayer
         }
-        .overlay(alignment: .trailing) {
-            if showLayers { layerPanel }
-        }
+        .statusBarHidden()
+        // Tapping empty chrome dismisses whichever panel is open.
+        .background(
+            Color.clear
+                .contentShape(Rectangle())
+                .onTapGesture { panel = .none }
+        )
     }
+
+    // MARK: - Canvas
+
+    /// The canvas keeps its aspect ratio and sits below the top bar, leaving the
+    /// grid visible around it exactly as the screenshots show.
+    private var canvasLayer: some View {
+        let size = model.initialDocument.canvasSize
+        return CanvasRepresentable(model: model)
+            .aspectRatio(CGFloat(size.width) / CGFloat(size.height), contentMode: .fit)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+            .padding(.top, PC.topBarHeight)
+            .ignoresSafeArea(edges: .bottom)
+    }
+
+    // MARK: - Top bar
 
     private var topBar: some View {
-        HStack {
-            // Top Left Tool Group
-            HStack(spacing: 24) {
-                Button(action: {}) { Image(systemName: "wrench.fill") }
-                Button(action: {}) { Image(systemName: "wand.and.stars") }
-                Button(action: {}) { Image(systemName: "lasso") }
-                Button(action: {}) { Image(systemName: "cursorarrow") }
+        HStack(spacing: 0) {
+            Text("Gallery")
+                .font(.system(size: PC.galleryFont))
+                .foregroundStyle(.white)
+                .padding(.trailing, 16)
+
+            HStack(spacing: 9) {
+                PCCircleButton(symbol: PC.iconActions, isActive: panel == .actions) {
+                    toggle(.actions)
+                }
+                PCCircleButton(symbol: PC.iconAdjust, isActive: panel == .adjustments) {
+                    toggle(.adjustments)
+                }
+                PCCircleButton(symbol: PC.iconSelect, isActive: panel == .selection) {
+                    toggle(.selection)
+                }
+                PCCircleButton(symbol: PC.iconTransform, isActive: panel == .transform) {
+                    toggle(.transform)
+                }
             }
-            .font(.title2)
-            .foregroundColor(.white)
-            
-            Spacer()
-            
-            // Top Right Tool Group
-            HStack(spacing: 24) {
-                Button(action: {}) { Image(systemName: "paintbrush.fill").foregroundColor(.accentColor) }
-                Button(action: {}) { Image(systemName: "hand.draw.fill") }
-                Button(action: {}) { Image(systemName: "eraser.fill") }
-                Button(action: { showLayers.toggle() }) { Image(systemName: "square.2.stack.3d") }
-                Button(action: { /* Active Color Tap */ }) {
+
+            Spacer(minLength: 0)
+
+            HStack(spacing: 4) {
+                PCBarIcon(symbol: PC.iconBrush, isActive: model.tool == .brush) {
+                    // Tapping the active tool opens its library, as in Procreate.
+                    if model.tool == .brush { toggle(.brushLibrary) } else { model.tool = .brush }
+                }
+                PCBarIcon(symbol: PC.iconSmudge, isActive: model.tool == .smudge) {
+                    if model.tool == .smudge { toggle(.brushLibrary) } else { model.tool = .smudge }
+                }
+                PCBarIcon(symbol: PC.iconEraser, isActive: model.tool == .eraser) {
+                    if model.tool == .eraser { toggle(.brushLibrary) } else { model.tool = .eraser }
+                }
+                PCBarIcon(symbol: PC.iconLayers, isActive: panel == .layers) {
+                    toggle(.layers)
+                }
+
+                Button { toggle(.color) } label: {
                     Circle()
-                        .fill(Color(red: model.color.r, green: model.color.g, blue: model.color.b))
-                        .frame(width: 28, height: 28)
-                        .overlay(Circle().stroke(Color.white, lineWidth: 2))
+                        .fill(Color(
+                            red: model.color.r,
+                            green: model.color.g,
+                            blue: model.color.b
+                        ))
+                        .frame(width: PC.colorWell, height: PC.colorWell)
                 }
-            }
-            .font(.title2)
-            .foregroundColor(.white)
-        }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 16)
-        .background(Color(white: 0.15).ignoresSafeArea(.all, edges: .top))
-    }
-
-    private var leftSidebar: some View {
-        VStack(spacing: 24) {
-            Slider(value: $model.brushSize, in: 0.02...1)
-                .frame(width: 150)
-                .rotationEffect(.degrees(-90))
-                .frame(width: 30, height: 150)
-                .tint(.gray)
-            
-            VStack(spacing: 24) {
-                Button(action: { model.undo() }) { Image(systemName: "arrow.uturn.backward") }
-                    .disabled(!model.canUndo)
-                Button(action: { model.redo() }) { Image(systemName: "arrow.uturn.forward") }
-                    .disabled(!model.canRedo)
-            }
-            .font(.title2)
-            .foregroundColor(.white)
-            
-            Slider(value: $model.brushOpacity, in: 0.05...1)
-                .frame(width: 150)
-                .rotationEffect(.degrees(-90))
-                .frame(width: 30, height: 150)
-                .tint(.gray)
-        }
-        .padding(.vertical, 24)
-        .padding(.horizontal, 12)
-        .background(Color(white: 0.2).opacity(0.8).cornerRadius(20))
-        .padding(.leading, 16)
-    }
-
-    private var layerPanel: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text("Layers").font(.headline)
-                Spacer()
-                Button("Add", systemImage: "plus") { model.addLayer() }
-                    .labelStyle(.iconOnly)
-            }
-            .padding(12)
-
-            Divider()
-
-            // Top layer first, matching what the user sees.
-            ScrollView {
-                VStack(spacing: 0) {
-                    ForEach(model.layers.reversed()) { layer in
-                        layerRow(layer)
-                        Divider()
-                    }
-                }
+                .buttonStyle(.plain)
+                .padding(.leading, 8)
+                .padding(.trailing, 4)
             }
         }
-        .frame(width: 240)
-        .background(.regularMaterial)
-        .padding(.trailing, 8)
-        .padding(.top, 70)
-        .padding(.bottom, 40)
+        .padding(.horizontal, 16)
+        .frame(height: PC.topBarHeight)
+        .background(PC.topBar)
     }
 
-    private func layerRow(_ layer: Layer) -> some View {
-        HStack {
-            Button {
-                model.toggleVisibility(layerID: layer.id)
-            } label: {
-                Image(systemName: layer.isVisible ? "eye" : "eye.slash")
+    // MARK: - Left sidebar
+
+    /// Size slider, square brush-settings button, opacity slider, then undo/redo.
+    private var sidebar: some View {
+        VStack(spacing: 0) {
+            PCVerticalSlider(value: $model.brushSize, range: 0.02...1)
+
+            Button(action: {}) {
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .stroke(Color(white: 0.85), lineWidth: 1.6)
+                    .frame(width: 17, height: 17)
             }
             .buttonStyle(.plain)
+            .padding(.vertical, 17)
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(layer.name).font(.subheadline)
-                if layer.kind == .backgroundColor {
-                    Text("Background").font(.caption2).foregroundStyle(.secondary)
-                } else {
-                    Text("\(layer.strokes.count) strokes")
-                        .font(.caption2).foregroundStyle(.secondary)
-                }
+            PCVerticalSlider(value: $model.brushOpacity, range: 0.02...1)
+
+            Button { model.undo() } label: {
+                Image(systemName: PC.iconUndo)
+                    .font(.system(size: 15))
+                    .foregroundStyle(model.canUndo ? PC.icon : PC.iconDim)
             }
+            .buttonStyle(.plain)
+            .disabled(!model.canUndo)
+            .padding(.top, 26)
 
-            Spacer()
-
-            if layer.id == model.activeLayerID {
-                Image(systemName: "checkmark.circle.fill").foregroundStyle(.tint)
+            Button { model.redo() } label: {
+                Image(systemName: PC.iconRedo)
+                    .font(.system(size: 15))
+                    .foregroundStyle(model.canRedo ? PC.icon : PC.iconDim)
             }
+            .buttonStyle(.plain)
+            .padding(.top, 17)
         }
-        .padding(10)
-        .contentShape(Rectangle())
-        .onTapGesture {
-            // The background colour layer cannot be painted on, so it is not
-            // selectable — mirrors the Core rule rather than duplicating it.
-            if layer.kind == .paint { model.select(layerID: layer.id) }
+        .padding(.vertical, 12)
+        .frame(width: PC.sidebarWidth)
+        .background(
+            RoundedRectangle(cornerRadius: PC.sidebarCorner, style: .continuous)
+                .fill(PC.sidebar)
+        )
+        // Vertically centred, flush to the left edge.
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+    }
+
+    // MARK: - Panels
+
+    @ViewBuilder
+    private var panelLayer: some View {
+        switch panel {
+        case .actions:
+            PCActionsPanel()
+                .padding(.leading, 52)
+                .padding(.top, PC.topBarHeight + 4)
+        case .adjustments:
+            PCAdjustmentsPanel()
+                .padding(.leading, 52)
+                .padding(.top, PC.topBarHeight + 4)
+        case .brushLibrary:
+            PCBrushLibrary(model: model)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .padding(.trailing, 88)
+                .padding(.top, PC.topBarHeight + 4)
+        case .layers:
+            PCLayersPanel(model: model)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .padding(.trailing, 16)
+                .padding(.top, PC.topBarHeight + 4)
+        default:
+            EmptyView()
         }
-        .background(layer.id == model.activeLayerID ? Color.accentColor.opacity(0.12) : .clear)
+    }
+
+    @ViewBuilder
+    private var bottomBarLayer: some View {
+        if panel == .selection {
+            PCBottomBar(
+                modes: [
+                    ("circle.dashed", "Automatic"), ("scribble", "Freehand"),
+                    ("rectangle", "Rectangle"), ("circle.lefthalf.filled", "Ellipse")
+                ],
+                selectedMode: $selectionMode,
+                actions: [
+                    ("plus.rectangle.fill", "Add", true),
+                    ("minus.rectangle", "Remove", false),
+                    ("square.righthalf.filled", "Invert", false),
+                    ("circle.righthalf.filled", "Copy & Paste", false),
+                    ("circle.dotted", "Feather", false),
+                    ("heart.fill", "Save & Load", false),
+                    ("drop.fill", "Color Fill", true),
+                    ("paintbrush.pointed", "Clear", false)
+                ]
+            )
+            .frame(width: 600)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+            .padding(.bottom, 12)
+        } else if panel == .transform {
+            PCBottomBar(
+                modes: [
+                    ("rectangle.split.2x1", "Freeform"), ("rectangle", "Uniform"),
+                    ("skew", "Distort"), ("circle.lefthalf.filled", "Warp")
+                ],
+                selectedMode: $transformMode,
+                actions: [
+                    ("bolt.fill", "Snapping", false),
+                    ("arrow.left.and.right", "Flip Horizontal", false),
+                    ("arrow.up.and.down", "Flip Vertical", false),
+                    ("arrow.clockwise", "Rotate 45°", false),
+                    ("arrow.up.left.and.arrow.down.right", "Fit to Canvas", false),
+                    ("circle.grid.3x3.fill", "Bicubic", false),
+                    ("arrow.2.squarepath", "Reset", false)
+                ]
+            )
+            .frame(width: 560)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+            .padding(.bottom, 12)
+        }
+    }
+
+    private func toggle(_ target: PCPanel) {
+        panel = (panel == target) ? .none : target
     }
 }
 #endif
