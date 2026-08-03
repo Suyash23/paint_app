@@ -135,60 +135,88 @@ public struct PaintView: View {
                     contentMode: .fit
                 )
                 .padding(.horizontal, 8)
-            toolbar
+            
+            VStack(spacing: 0) {
+                topBar
+                Spacer()
+            }
+            
+            VStack {
+                Spacer()
+                HStack {
+                    leftSidebar
+                    Spacer()
+                }
+                Spacer()
+            }
         }
         .overlay(alignment: .trailing) {
             if showLayers { layerPanel }
         }
     }
 
-    private var toolbar: some View {
-        HStack(spacing: 16) {
-            Picker("Brush", selection: $model.brushID) {
-                Text("Pen").tag(Brush.studioPen.id)
-                Text("Pencil").tag(Brush.softPencil.id)
+    private var topBar: some View {
+        HStack {
+            // Top Left Tool Group
+            HStack(spacing: 24) {
+                Button(action: {}) { Image(systemName: "wrench.fill") }
+                Button(action: {}) { Image(systemName: "wand.and.stars") }
+                Button(action: {}) { Image(systemName: "lasso") }
+                Button(action: {}) { Image(systemName: "cursorarrow") }
             }
-            .pickerStyle(.segmented)
-            .frame(width: 140)
-
-            ForEach(Self.palette, id: \.0) { name, swatch in
-                Button {
-                    model.color = swatch
-                } label: {
+            .font(.title2)
+            .foregroundColor(.white)
+            
+            Spacer()
+            
+            // Top Right Tool Group
+            HStack(spacing: 24) {
+                Button(action: {}) { Image(systemName: "paintbrush.fill").foregroundColor(.accentColor) }
+                Button(action: {}) { Image(systemName: "hand.draw.fill") }
+                Button(action: {}) { Image(systemName: "eraser.fill") }
+                Button(action: { showLayers.toggle() }) { Image(systemName: "square.2.stack.3d") }
+                Button(action: { /* Active Color Tap */ }) {
                     Circle()
-                        .fill(Color(red: swatch.r, green: swatch.g, blue: swatch.b))
-                        .frame(width: 24, height: 24)
-                        .overlay(
-                            Circle().stroke(.white.opacity(model.color == swatch ? 1 : 0.3),
-                                            lineWidth: model.color == swatch ? 2 : 1)
-                        )
+                        .fill(Color(red: model.color.r, green: model.color.g, blue: model.color.b))
+                        .frame(width: 28, height: 28)
+                        .overlay(Circle().stroke(Color.white, lineWidth: 2))
                 }
-                .accessibilityLabel(name)
             }
-
-            VStack(spacing: 2) {
-                Text("Size").font(.caption2)
-                Slider(value: $model.brushSize, in: 0.02...1).frame(width: 110)
-            }
-
-            VStack(spacing: 2) {
-                Text("Opacity").font(.caption2)
-                Slider(value: $model.brushOpacity, in: 0.05...1).frame(width: 110)
-            }
-
-            Button("Undo", systemImage: "arrow.uturn.backward") { model.undo() }
-                .disabled(!model.canUndo)
-            Button("Redo", systemImage: "arrow.uturn.forward") { model.redo() }
-                .disabled(!model.canRedo)
-            Button("Layers", systemImage: "square.3.layers.3d") {
-                showLayers.toggle()
-            }
+            .font(.title2)
+            .foregroundColor(.white)
         }
-        .labelStyle(.iconOnly)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(.thinMaterial, in: Capsule())
-        .padding(.top, 8)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 16)
+        .background(Color(white: 0.15).ignoresSafeArea(.all, edges: .top))
+    }
+
+    private var leftSidebar: some View {
+        VStack(spacing: 24) {
+            Slider(value: $model.brushSize, in: 0.02...1)
+                .frame(width: 150)
+                .rotationEffect(.degrees(-90))
+                .frame(width: 30, height: 150)
+                .tint(.gray)
+            
+            VStack(spacing: 24) {
+                Button(action: { model.undo() }) { Image(systemName: "arrow.uturn.backward") }
+                    .disabled(!model.canUndo)
+                Button(action: { model.redo() }) { Image(systemName: "arrow.uturn.forward") }
+                    .disabled(!model.canRedo)
+            }
+            .font(.title2)
+            .foregroundColor(.white)
+            
+            Slider(value: $model.brushOpacity, in: 0.05...1)
+                .frame(width: 150)
+                .rotationEffect(.degrees(-90))
+                .frame(width: 30, height: 150)
+                .tint(.gray)
+        }
+        .padding(.vertical, 24)
+        .padding(.horizontal, 12)
+        .background(Color(white: 0.2).opacity(0.8).cornerRadius(20))
+        .padding(.leading, 16)
     }
 
     private var layerPanel: some View {
