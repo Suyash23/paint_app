@@ -7,3 +7,7 @@ xcuserdata/
 
 # Large reference PDFs (62 MB) — kept local, not worth versioning
 *.pdf
+
+# Xcode app target user state
+App/**/xcuserdata/
+App/**/project.xcworkspace/

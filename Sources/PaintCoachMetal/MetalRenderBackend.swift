@@ -38,6 +38,8 @@ public final class MetalRenderBackend: RenderBackend {
     private var frameCommandBuffer: MTLCommandBuffer?
     private var frameEncoder: MTLRenderCommandEncoder?
     private var frameTarget: FrameTarget?
+    /// Canvas size for the frame in flight, used to transform the live stroke.
+    private var frameCanvasSize: CanvasSize?
 
     /// Supplies the target to render into. Injected so this type depends on no
     /// specific view class, and so frames can be rendered offscreen for testing.
@@ -244,6 +246,11 @@ public final class MetalRenderBackend: RenderBackend {
         guard let target = frameTargetProvider?() else { throw RenderError.backendUnavailable }
         guard let buffer = commandQueue.makeCommandBuffer() else { throw RenderError.backendUnavailable }
 
+        // Remember the canvas size for this frame. The live stroke must be
+        // transformed in canvas space, not drawable space — the drawable is
+        // whatever size the view happens to be and usually a different aspect.
+        frameCanvasSize = size
+
         let descriptor = MTLRenderPassDescriptor()
         descriptor.colorAttachments[0].texture = target.texture
         descriptor.colorAttachments[0].loadAction = .clear
@@ -280,7 +287,7 @@ public final class MetalRenderBackend: RenderBackend {
 
     public func compositeLiveStroke(batch: StampBatch, opacity: Double) throws {
         guard let encoder = frameEncoder else { throw RenderError.noFrameInProgress }
-        guard let target = frameTarget else { throw RenderError.noFrameInProgress }
+        guard let canvasSize = frameCanvasSize else { throw RenderError.noFrameInProgress }
         guard !batch.stamps.isEmpty else { return }
 
         // Drawn straight onto the frame, never into the layer cache — this is
@@ -293,11 +300,9 @@ public final class MetalRenderBackend: RenderBackend {
                 return stamp
             }
         }
-        try encode(
-            batch: faded,
-            into: encoder,
-            canvasSize: CanvasSize(width: target.texture.width, height: target.texture.height)
-        )
+        // Transform in canvas space so the live stroke lines up with the cached
+        // strokes beneath it, regardless of the drawable's size or aspect.
+        try encode(batch: faded, into: encoder, canvasSize: canvasSize)
     }
 
     public func endFrame() throws {
@@ -317,6 +322,7 @@ public final class MetalRenderBackend: RenderBackend {
         frameEncoder = nil
         frameCommandBuffer = nil
         frameTarget = nil
+        frameCanvasSize = nil
     }
 
     // MARK: - Helpers

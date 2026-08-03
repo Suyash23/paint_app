@@ -124,7 +124,17 @@ public struct PaintView: View {
     public var body: some View {
         ZStack(alignment: .top) {
             Color(white: 0.12).ignoresSafeArea()
-            CanvasRepresentable(model: model).ignoresSafeArea()
+            // Constrain the view to the canvas aspect ratio. The compositing
+            // shader draws a fullscreen quad, so the drawable must match the
+            // canvas aspect or the image stretches — and touch mapping would
+            // then disagree with what is drawn.
+            CanvasRepresentable(model: model)
+                .aspectRatio(
+                    CGFloat(model.initialDocument.canvasSize.width)
+                        / CGFloat(model.initialDocument.canvasSize.height),
+                    contentMode: .fit
+                )
+                .padding(.horizontal, 8)
             toolbar
         }
         .overlay(alignment: .trailing) {
